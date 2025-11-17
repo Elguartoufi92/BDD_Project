@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.env
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.pdf
+*.synctex.gz
+
+# OS
+.DS_Store
