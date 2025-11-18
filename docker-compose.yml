@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # --- Config Servers (Replica Set: cfg-rs) ---
+  # Stockent les métadonnées du cluster. 2 nœuds pour la redondance.
+  cfg1:
+    image: mongo
+    command: mongod --configsvr --replSet cfg-rs --port 27017 --bind_ip_all
+    ports:
+      - "30001:27017"
+    volumes:
+      - [cite_start]./scripts:/scripts  # Pour partager les scripts d'Abdelkabir [cite: 28]
+    networks:
+      - cluster-net
+
+  cfg2:
+    image: mongo
+    command: mongod --configsvr --replSet cfg-rs --port 27017 --bind_ip_all
+    ports:
+      - "30002:27017"
+    networks:
+      - cluster-net
+
+  # --- Shard A (Replica Set: shardA-rs) ---
+  # Stocke une partie des données (ex: Faculté A & B).
+  shA1:
+    image: mongo
+    command: mongod --shardsvr --replSet shardA-rs --port 27017 --bind_ip_all
+    ports:
+      - "30003:27017"
+    networks:
+      - cluster-net
+
+  shA2:
+    image: mongo
+    command: mongod --shardsvr --replSet shardA-rs --port 27017 --bind_ip_all
+    ports:
+      - "30004:27017"
+    networks:
+      - cluster-net
+
+  # --- Shard B (Replica Set: shardB-rs) ---
+  # Stocke l'autre partie des données (ex: Faculté C & D).
+  shB1:
+    image: mongo
+    command: mongod --shardsvr --replSet shardB-rs --port 27017 --bind_ip_all
+    ports:
+      - "30005:27017"
+    networks:
+      - cluster-net
+
+  shB2:
+    image: mongo
+    command: mongod --shardsvr --replSet shardB-rs --port 27017 --bind_ip_all
+    ports:
+      - "30006:27017"
+    networks:
+      - cluster-net
+
+  # --- Mongos Router ---
+  # Le point d'entrée unique pour l'application.
+  mongos:
+    image: mongo
+    # Commande critique qui relie le routeur aux Config Servers 
+    command: mongos --configdb cfg-rs/cfg1:27017,cfg2:27017 --bind_ip_all --port 27017
+    ports:
+      - [cite_start]"27017:27017" # C'est ici que l'application se connecte [cite: 109]
+    [cite_start]depends_on: # Assure que les autres services démarrent avant [cite: 97]
+      - cfg1
+      - cfg2
+      - shA1
+      - shB1
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - cluster-net
+
+networks:
+  cluster-net:
+    driver: bridge
