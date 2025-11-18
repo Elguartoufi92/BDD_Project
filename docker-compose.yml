@@ -46,6 +46,7 @@ services:
     ports:
       - "30003:27017"
     volumes:
+      - ./scripts:/scripts
       - shA1-data:/data/db
     networks:
       - cluster-net
@@ -62,6 +63,7 @@ services:
     ports:
       - "30004:27017"
     volumes:
+      - ./scripts:/scripts
       - shA2-data:/data/db
     networks:
       - cluster-net
@@ -80,6 +82,7 @@ services:
     ports:
       - "30005:27017"
     volumes:
+      - ./scripts:/scripts
       - shB1-data:/data/db
     networks:
       - cluster-net
@@ -96,6 +99,7 @@ services:
     ports:
       - "30006:27017"
     volumes:
+      - ./scripts:/scripts
       - shB2-data:/data/db
     networks:
       - cluster-net
@@ -112,7 +116,7 @@ services:
     container_name: mongos
     command: mongos --configdb cfg-rs/cfg1:27017,cfg2:27017 --bind_ip_all --port 27017
     ports:
-      - "27017:27017"
+      - "27018:27017"
     depends_on:
       cfg1:
         condition: service_healthy
