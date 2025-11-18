@@ -7,9 +7,9 @@ import time
 # Connexion au routeur Mongos (et non directement à un Shard)
 MONGO_URI = "mongodb://localhost:27017/"  # [cite: 171]
 DB_NAME = "universiteDB"                  # [cite: 172]
-NUM_ETUDIANTS = 1000000                   # 1 Million d'étudiants [cite: 173]
+NUM_ETUDIANTS = 50000                  # 1 Million d'étudiants [cite: 173]
 NUM_NOTES_PER_ETUDIANT = 5                # 5 notes par étudiant [cite: 174]
-BATCH_SIZE = 10000                        # Insertion par lots de 10k pour la performance [cite: 175]
+BATCH_SIZE = 500                        # Insertion par lots de 10k pour la performance [cite: 175]
 
 # --- Données de référence ---
 fake = Faker('fr_FR')                     # [cite: 177]
