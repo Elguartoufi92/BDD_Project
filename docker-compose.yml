@@ -9,7 +9,7 @@ services:
     ports:
       - "30001:27017"
     volumes:
-      - [cite_start]./scripts:/scripts  # Pour partager les scripts d'Abdelkabir [cite: 28]
+      - ./scripts:/scripts  # Pour partager les scripts d'Abdelkabir [cite: 28]
     networks:
       - cluster-net
 
@@ -64,8 +64,8 @@ services:
     # Commande critique qui relie le routeur aux Config Servers 
     command: mongos --configdb cfg-rs/cfg1:27017,cfg2:27017 --bind_ip_all --port 27017
     ports:
-      - [cite_start]"27017:27017" # C'est ici que l'application se connecte [cite: 109]
-    [cite_start]depends_on: # Assure que les autres services démarrent avant [cite: 97]
+      - "27017:27017" # C'est ici que l'application se connecte [cite: 109]
+    depends_on: # Assure que les autres services démarrent avant [cite: 97]
       - cfg1
       - cfg2
       - shA1
