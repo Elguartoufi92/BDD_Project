@@ -1,0 +1,10 @@
+===========(sharding_by_faculte) ===========
+
+AVG_BY_STUDENT: 296.2135 sec
+NOTES_SINGLE: 0.0764 sec
+AVG_BY_YEAR: 0.2626 sec
+AVG_BY_FAC: 0.5015 sec
+HISTOGRAM: 0.3418 sec
+MOST_NOTES: 234.8781 sec
+
+================================
