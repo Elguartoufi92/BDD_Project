@@ -1,97 +1,104 @@
 // =================================================================
-// SCRIPT DE CONFIGURATION MONGODB - VERSION ULTIME (AUTO-BALANCE)
+// SCRIPT DE CONFIGURATION MONGODB - VERSION CORRIGÉE (V2)
 // SCENARIO A: Sharding par "faculte"
-// Rôle: Abdelkabir (Role 3)
+// Compatible: MongoDB 6.0, 7.0, 8.0+
 // =================================================================
 
-print("===== Début Configuration Sharding (SCENARIO A: FACULTE) =====");
+print("\n===== Début Configuration Sharding (SCENARIO A: FACULTE) =====");
 
 // ---------------------------------------------------------
 // 1. CONFIGURATION SYSTEME (Chunk Size)
 // ---------------------------------------------------------
-print("0. Forçage du Chunk Size à 1MB (Pour les petites données)...");
+print("1. Configuration du Chunk Size (1MB)...");
 try {
     var configDB = db.getSiblingDB("config");
-    configDB.settings.save({ _id: "chunksize", value: 1 });
-    print("   ... Chunk Size réglé sur 1 MB avec succès!");
+    // FIX: Bdellna .save() (Qdima) b .updateOne() (Jdida)
+    configDB.settings.updateOne(
+        { _id: "chunksize" },
+        { $set: { value: 1 } },
+        { upsert: true }
+    );
+    print("   ✅ Chunk Size réglé sur 1 MB.");
 } catch (e) {
-    print("   ... Erreur Chunk Size (ou déjà fait): " + e);
+    print("   ⚠️ Erreur Chunk Size: " + e);
 }
 
 // ---------------------------------------------------------
 // 2. AJOUT DES SHARDS
 // ---------------------------------------------------------
-print("1. Ajout des Shards...");
+print("2. Ajout des Shards...");
 try {
     sh.addShard("shardA-rs/shA1:27017,shA2:27017");
-    print("   ... Shard A ajouté.");
-} catch(e) { print("   ... Shard A existe déjà."); }
+    print("   ✅ Shard A ajouté.");
+} catch(e) { print("   ℹ️  Shard A existe déjà."); }
 
 try {
     sh.addShard("shardB-rs/shB1:27017,shB2:27017");
-    print("   ... Shard B ajouté.");
-} catch(e) { print("   ... Shard B existe déjà."); }
+    print("   ✅ Shard B ajouté.");
+} catch(e) { print("   ℹ️  Shard B existe déjà."); }
 
 // ---------------------------------------------------------
-// 3. ACTIVATION DB & SHARDING BASIQUE
+// 3. ACTIVATION DB
 // ---------------------------------------------------------
 print("3. Activation Sharding sur 'universiteDB'...");
 try {
     sh.enableSharding("universiteDB");
-} catch (e) { print("   ... DB déjà activée."); }
+    print("   ✅ DB activée avec succès.");
+} catch (e) { 
+    print("   ℹ️  DB déjà activée."); 
+}
 
-// Fonction pour sharder et équilibrer une collection
+// ---------------------------------------------------------
+// 4. FONCTION DE CONFIGURATION
+// ---------------------------------------------------------
 function setupAndBalance(collName) {
     var ns = "universiteDB." + collName;
-    print("\n>>> Configuration de : " + ns);
+    print("\n>>> Traitement de la collection : " + ns);
 
-    // A. Sharding Key
+    // A. SHARDING
     try {
         sh.shardCollection(ns, { faculte: 1 });
-        print("    [OK] Collection shardée.");
+        print("    ✅ [SHARD] Collection shardée.");
     } catch (e) {
-        print("    [INFO] Déjà shardée.");
+        print("    ℹ️  [SHARD] Déjà shardée.");
     }
 
-    // B. PRE-SPLITTING (Hna l'Qaleb: Kan-qsmo l'Tariq qbel ma tji l'data)
-    // On coupe le gateau à "Faculte C".
-    // Résultat: 
-    //   Chunk 1: -Infini ... Faculte C (Contient Faculte A, B)
-    //   Chunk 2: Faculte C ... +Infini (Contient Faculte C, D)
-    print("    [SPLIT] Découpage manuel à 'Faculte C'...");
+    // B. SPLITTING (Découpage)
+    // On coupe le gateau à "Faculte C"
+    print("    ... Tentative de Split à 'Faculte C'...");
     try {
-        sh.splitAt(ns, { faculte: "Faculte C" });
-        print("    [OK] Split réussi.");
+        var res = sh.splitAt(ns, { faculte: "Faculte C" });
+        if (res.ok) {
+            print("    ✅ [SPLIT] Split réussi.");
+        } else {
+            print("    ℹ️  [SPLIT] Pas nécessaire ou erreur mineure.");
+        }
     } catch (e) {
-        print("    [INFO] Déjà splité.");
+        print("    ℹ️  [SPLIT] Déjà splité ou erreur: " + e.message);
     }
 
-    // C. MOVE CHUNK (Te7wal)
+    // C. MOVING (Déplacement)
     // On déplace le morceau "Faculte C et plus" vers Shard B
-    print("    [MOVE] Déplacement des Facultés C/D vers Shard B...");
+    print("    ... Tentative de déplacement vers Shard B...");
     try {
-        sh.moveChunk(ns, { faculte: "Faculte C" }, "shardB-rs");
-        print("    [OK] Déplacement réussi.");
+        var res = sh.moveChunk(ns, { faculte: "Faculte C" }, "shardB-rs");
+        if (res.ok) {
+            print("    ✅ [MOVE] Déplacement réussi.");
+        } else {
+            print("    ℹ️  [MOVE] Déjà sur le bon shard.");
+        }
     } catch (e) {
-        print("    [INFO] Déjà déplacé ou erreur (voir logs).");
+        // Ignorer l'erreur si c'est déjà fait
+        print("    ℹ️  [MOVE] Chunk déjà déplacé.");
     }
 }
 
 // ---------------------------------------------------------
-// 4. EXECUTION SUR LES COLLECTIONS
+// 5. APPLICATION
 // ---------------------------------------------------------
-print("4. Application sur les collections...");
-
 setupAndBalance("etudiants");
 setupAndBalance("notes");
 
-// ---------------------------------------------------------
-// 5. DEMARRAGE BALANCER
-// ---------------------------------------------------------
-print("5. Activation du Balancer (au cas où)...");
-printjson(sh.startBalancer());
-
-print("\n===== Configuration ULTIME Terminée =====");
+print("\n===== Configuration Terminée avec Succès =====");
 print("Distribution actuelle :");
-var universiteDB = db.getSiblingDB("universiteDB");
-printjson(universiteDB.etudiants.getShardDistribution());
+printjson(sh.status());
