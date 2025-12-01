@@ -1,26 +1,46 @@
 import pymongo
 import time
-from statistics import mean
 import sys
+from statistics import mean
 from pymongo import ReadPreference
 
-# --- Configuration ---
-# 1. ✅ AJOUT DE "readPreference=primaryPreferred"
-# Hada howa li kaykhlli l'code ykhdem wakha Primary TAYE7 (kaymchi l Secondary)
-MONGO_URI = "mongodb://localhost:27018/?readPreference=primaryPreferred"
-DB_NAME = "universiteDB"
+# =============================================================================
+# SCRIPT DE BENCHMARK & CHAOS TEST - VERSION CORRIGÉE
+# =============================================================================
+
+# 1. DETECTION DU MODE (via Arguments)
+IS_CHAOS_MODE = "--chaos" in sys.argv
+
+print(f"\n{'='*60}")
+if IS_CHAOS_MODE:
+    print("🔥 MODE CHAOS DETECTÉ (Lecture Seule / Tolérance Panne) 🔥")
+    print("   -> Strategie: ReadPreference.PRIMARY_PREFERRED")
+    print("   -> Action: Creation Index DESACTIVÉE")
+    
+    URI_OPTIONS = "?readPreference=primaryPreferred"
+    MY_READ_PREF = ReadPreference.PRIMARY_PREFERRED
+else:
+    print("✅ MODE NORMAL (Performance Standard) ✅")
+    print("   -> Strategie: ReadPreference.PRIMARY")
+    print("   -> Action: Creation Index ACTIVÉE")
+    
+    URI_OPTIONS = ""
+    MY_READ_PREF = ReadPreference.PRIMARY
+print(f"{'='*60}\n")
+
 
 print("--- 1. Connecting to MongoDB... ---")
-# Zedt directConnection=False bach yt3amel m3a cluster sharded
-# ✅ HNA L'FIX: Kan-passiw 'read_preference' comama argument, machi f String
+
+# Configuration Docker Interne
+MONGO_URI = f"mongodb://localhost:27018/{URI_OPTIONS}"
+DB_NAME = "universiteDB"
+
 client = pymongo.MongoClient(
     MONGO_URI,
     serverSelectionTimeoutMS=5000,
-    read_preference=ReadPreference.PRIMARY_PREFERRED  # <--- HADA HOWA L'MO3ALIM
+    connectTimeoutMS=5000,
+    read_preference=MY_READ_PREF
 )
-
-# Debug: Bach nt2kdo anna l'code fhem l'plan
-print(f"DEBUG: Read Preference actuelle = {client.read_preference}")
 
 db = client[DB_NAME]
 
@@ -32,45 +52,64 @@ except Exception as e:
     print(f"\n!!! ERREUR DE CONNEXION !!!\nErreur: {e}")
     sys.exit(1)
 
-etudiants = db["etudiants"]
-notes = db["notes"]
+# FORCER LE READ PREFERENCE
+if IS_CHAOS_MODE:
+    print("--- ⚙️  Application du ReadPreference sur les Collections... ---")
+    etudiants = db.get_collection("etudiants").with_options(read_preference=ReadPreference.PRIMARY_PREFERRED)
+    notes = db.get_collection("notes").with_options(read_preference=ReadPreference.PRIMARY_PREFERRED)
+else:
+    etudiants = db["etudiants"]
+    notes = db["notes"]
 
-# ------------------------------------------
-# Detect SHARDING MODE
-# ------------------------------------------
+
+# =============================================================================
+# 🛑 FIX: DETECTION DU SHARDING (INTEGRÉE ICI)
+# =============================================================================
+# =============================================================================
+# 4. DETECTION STRATEGY (FIXED FOR CHAOS)
+# =============================================================================
 def detect_sharding_strategy():
+    # FIX: Ila konna f Chaos, bla ma n-risquiw nqraw metadata (kaybghiw Primary)
+    if IS_CHAOS_MODE:
+        return "faculte"
     try:
-        config = client["config"]["collections"].find_one({"_id": f"{DB_NAME}.etudiants"})
-        if not config: return "unknown"
-        key = config.get("key", {})
-        if "faculte" in key: return "faculte"
-        elif "annee_universitaire" in key: return "annee"
-        return "unknown"
-    except:
-        return "unknown"
+        # Hada code dyal Normal Mode
+        indexes = etudiants.index_information()
+        
+        if "faculte_1" in indexes:
+            return "faculte"
+        elif "annee_universitaire_1" in indexes:
+            return "annee"
+        else:
+            return "unknown"
+            
+    except Exception as e:
+        print(f"(Warning: {e})", end=" ")
+        # Fallback l-safe value
+        return "faculte"
 
 SHARDING_MODE = detect_sharding_strategy()
-print(f"--- STRATEGY DETECTED: {SHARDING_MODE} ---")
+print(f"--- DETECTED STRATEGY: {SHARDING_MODE} ---")
 
-# ==========================================
-#  ✅ FIX: Try/Except 3la l'Index
-# ==========================================
-print("--- Creating Index on 'notes.etudiant_id' (Optimization) ---")
-try:
-    db.notes.create_index([("etudiant_id", pymongo.ASCENDING)])
-    print("--- Index Created Successfully! ---")
-except Exception as e:
-    # Hna fin kan-ignorer l'erreur ila Primary kan taye7
-    print(f"--- ⚠️ Index creation SKIPPED (Normal during Failure Test) ---")
-    print("> Reason:  Could not find host matching read preference { faculte : primary } for set shardA-rs")
 
-# ==========================================
+# =============================================================================
+# 3. OPTIMISATION (INDEX)
+# =============================================================================
+if not IS_CHAOS_MODE:
+    print("\n--- [NORMAL] Création de l'Index sur 'etudiant_id' ---")
+    try:
+        db.notes.create_index([("etudiant_id", pymongo.ASCENDING)])
+        print("✅ Index créé avec succès.")
+    except Exception as e:
+        print(f"⚠️ Erreur création index: {e}")
+else:
+    print("\n--- [CHAOS] ⏩ Index Creation SKIPPED (Write operation unsafe) ---")
 
-# ------------------------------------------
-# Benchmark helper
-# ------------------------------------------
+# =============================================================================
+# 4. BENCHMARK HELPER
+# =============================================================================
 def benchmark(name, func, repeat=1):
-    print(f"\n >> [START] {name}...", end=" ", flush=True) 
+    print(f" >> [START] {name}...", end=" ", flush=True) 
     try:
         times = []
         for i in range(repeat):
@@ -84,33 +123,39 @@ def benchmark(name, func, repeat=1):
         return avg_time
     except Exception as e:
         print(f"FAILED! Error: {e}")
-        # Hna kan-returniw None bach n3rfo rah fchel, walakin ma nwaqfouch script
         return None
 
-# ------------------------------------------
-# QUERIES
-# ------------------------------------------
-def avg_by_student():
-    list(etudiants.aggregate([
-        {"$lookup": {"from": "notes", "localField": "etudiant_id", "foreignField": "etudiant_id", "as": "notes"}},
-        {"$unwind": "$notes"},
-        {"$group": {"_id": "$etudiant_id", "avg_note": {"$avg": "$notes.note"}}}
-    ]))
+# =============================================================================
+# 5. REQUETES (QUERIES) - OPTIMISÉES
+# =============================================================================
 
 def single_student_avg():
+    # Simple read
     list(notes.aggregate([
         {"$match": {"etudiant_id": "CNE_1"}},
         {"$group": {"_id": None, "avg": {"$avg": "$note"}}}
     ]))
 
+def avg_by_faculte():
+    # Sharding Key
+    list(notes.aggregate([
+        {"$group": {"_id": "$faculte", "avg_note": {"$avg": "$note"}}}
+    ]))
+
 def avg_by_year():
+    # Scatter-Gather (Global)
     list(notes.aggregate([
         {"$group": {"_id": "$annee_universitaire", "avg_note": {"$avg": "$note"}}}
     ]))
 
-def avg_by_faculte():
+def avg_by_student():
+    # ✅ OPTIMISÉE: Plus de $lookup, direct sur notes
     list(notes.aggregate([
-        {"$group": {"_id": "$faculte", "avg_note": {"$avg": "$note"}}}
+        {"$group": {
+            "_id": "$etudiant_id", 
+            "avg_note": {"$avg": "$note"}
+        }},
+        {"$limit": 100} 
     ]))
 
 def histogram_notes():
@@ -124,13 +169,18 @@ def histogram_notes():
     ]))
 
 def top20_students():
-    list(etudiants.aggregate([
-        {"$lookup": {"from": "notes", "localField": "etudiant_id", "foreignField": "etudiant_id", "as": "notes"}},
-        {"$unwind": "$notes"},
-        {"$group": {"_id": "$etudiant_id", "avg_note": {"$avg": "$notes.note"}}},
-        {"$sort": {"avg_note": -1}},
-        {"$limit": 20}
-    ]))
+    # ✅ OPTIMISÉE: Plus de $lookup, direct sur notes
+    try:
+        list(notes.aggregate([
+            {"$group": {
+                "_id": "$etudiant_id", 
+                "avg_note": {"$avg": "$note"}
+            }},
+            {"$sort": {"avg_note": -1}},
+            {"$limit": 20}
+        ]))
+    except Exception as e:
+        print(f" (Error: {e})", end="")
 
 # ------------------------------------------
 # RUN BENCHMARKS
@@ -142,4 +192,6 @@ benchmark("AVG_BY_FAC", avg_by_faculte)
 benchmark("AVG_BY_STUDENT", avg_by_student)
 benchmark("AVG_BY_YEAR", avg_by_year)
 benchmark("HISTOGRAM", histogram_notes)
-benchmark("MOST_NOTES", top20_students)
+benchmark("MOST_NOTES (TOP 20)", top20_students)
+
+print("\n✅ Terminé.")

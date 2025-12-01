@@ -22,10 +22,10 @@ Write-Host "---[STEP 0] Starting cluster and copying required scripts into conta
 docker cp ./scripts/init-config-rs.js cfg1:/scripts/init-config-rs.js
 docker cp ./scripts/init-shardA-rs.js shA1:/scripts/init-shardA-rs.js
 docker cp ./scripts/init-shardB-rs.js shB1:/scripts/init-shardB-rs.js
-docker cp ./scripts/setup_sharding_FACULTE.js mongos:/scripts/setup_sharding_FACULTE.js
+docker cp ./scripts/setup_sharding_ANNEE.js mongos:/scripts/setup_sharding_ANNEE.js
 
 # Copy Bash script for tests
-docker cp ./scripts/test_failure.sh mongos:/scripts/test_failure.sh
+docker cp ./scripts/test_failure.ps1 mongos:/scripts/test_failure.ps1
 
 Write-Host "Scripts copied successfully."
 Write-Host ""
