@@ -100,5 +100,3 @@ setupAndBalance("etudiants");
 setupAndBalance("notes");
 
 print("\n===== Configuration Terminée avec Succès =====");
-print("Distribution actuelle :");
-printjson(sh.status());

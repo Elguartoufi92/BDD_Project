@@ -32,7 +32,7 @@ print(f"{'='*60}\n")
 print("--- 1. Connecting to MongoDB... ---")
 
 # Configuration Docker Interne
-MONGO_URI = f"mongodb://localhost:27017/{URI_OPTIONS}"
+MONGO_URI = f"mongodb://localhost:27018/{URI_OPTIONS}"
 DB_NAME = "universiteDB"
 
 client = pymongo.MongoClient(
@@ -41,8 +41,6 @@ client = pymongo.MongoClient(
     connectTimeoutMS=5000,
     read_preference=MY_READ_PREF
 )
-
-print(f"DEBUG: Read Preference actuelle = {client.read_preference}")
 
 db = client[DB_NAME]
 
@@ -67,10 +65,15 @@ else:
 # =============================================================================
 # 🛑 FIX: DETECTION DU SHARDING (INTEGRÉE ICI)
 # =============================================================================
+# =============================================================================
+# 4. DETECTION STRATEGY (FIXED FOR CHAOS)
+# =============================================================================
 def detect_sharding_strategy():
-    print("DEBUG: Analyse des Indexes...", end=" ")
+    # FIX: Ila konna f Chaos, bla ma n-risquiw nqraw metadata (kaybghiw Primary)
+    if IS_CHAOS_MODE:
+        return "faculte"
     try:
-        # Kan-qellbo 3la l-indexes f collection 'etudiants'
+        # Hada code dyal Normal Mode
         indexes = etudiants.index_information()
         
         if "faculte_1" in indexes:
@@ -78,17 +81,12 @@ def detect_sharding_strategy():
         elif "annee_universitaire_1" in indexes:
             return "annee"
         else:
-            # Fallback: Config DB
-            config_doc = client["config"]["collections"].find_one({"_id": f"{DB_NAME}.etudiants"})
-            if config_doc:
-                key = config_doc.get("key", {})
-                if "faculte" in key: return "faculte"
-                if "annee_universitaire" in key: return "annee"
             return "unknown"
             
     except Exception as e:
         print(f"(Warning: {e})", end=" ")
-        return "unknown"
+        # Fallback l-safe value
+        return "faculte"
 
 SHARDING_MODE = detect_sharding_strategy()
 print(f"--- DETECTED STRATEGY: {SHARDING_MODE} ---")
@@ -106,7 +104,6 @@ if not IS_CHAOS_MODE:
         print(f"⚠️ Erreur création index: {e}")
 else:
     print("\n--- [CHAOS] ⏩ Index Creation SKIPPED (Write operation unsafe) ---")
-
 
 # =============================================================================
 # 4. BENCHMARK HELPER
