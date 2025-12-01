@@ -73,9 +73,9 @@ forceShardingByYear("notes");
 // 6. FIN
 // ---------------------------------------------------------
 print("6. Démarrage du Balancer...");
-sh.startBalancer();
+printjson(sh.startBalancer());
 
 print("\n===== Configuration SCENARIO B (FORCE) Terminée =====");
 print("Distribution actuelle :");
 var universiteDB = db.getSiblingDB("universiteDB");
-universiteDB.etudiants.getShardDistribution();
+printjson(universiteDB.etudiants.getShardDistribution());

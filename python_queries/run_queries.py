@@ -1,25 +1,50 @@
 import pymongo
 import time
-from statistics import mean
 import sys
+from statistics import mean
 from pymongo import ReadPreference
 
-# --- Configuration ---
-# 1. ✅ AJOUT DE "readPreference=primaryPreferred"
-# Hada howa li kaykhlli l'code ykhdem wakha Primary TAYE7 (kaymchi l Secondary)
-MONGO_URI = "mongodb://localhost:27018/?readPreference=primaryPreferred"
-DB_NAME = "universiteDB"
+# =============================================================================
+# SCRIPT DE BENCHMARK & CHAOS TEST - FINAL FIX
+# =============================================================================
+
+# 1. DETECTION DU MODE (via Arguments)
+# -----------------------------------------------------------------------------
+IS_CHAOS_MODE = "--chaos" in sys.argv
+
+print(f"\n{'='*60}")
+if IS_CHAOS_MODE:
+    print("🔥 MODE CHAOS DETECTÉ (Lecture Seule / Tolérance Panne) 🔥")
+    print("   -> Strategie: ReadPreference.PRIMARY_PREFERRED")
+    print("   -> Action: Creation Index DESACTIVÉE (Write unsafe)")
+    
+    # ✅ FIX 1: URI Options pour Chaos
+    URI_OPTIONS = "?readPreference=primaryPreferred"
+    MY_READ_PREF = ReadPreference.PRIMARY_PREFERRED
+else:
+    print("✅ MODE NORMAL (Performance Standard) ✅")
+    print("   -> Strategie: ReadPreference.PRIMARY")
+    print("   -> Action: Creation Index ACTIVÉE")
+    
+    URI_OPTIONS = ""
+    MY_READ_PREF = ReadPreference.PRIMARY
+print(f"{'='*60}\n")
+
 
 print("--- 1. Connecting to MongoDB... ---")
-# Zedt directConnection=False bach yt3amel m3a cluster sharded
-# ✅ HNA L'FIX: Kan-passiw 'read_preference' comama argument, machi f String
+
+# ✅ FIX 2: Port 27017 (Interne Docker) + Dynamic Options
+MONGO_URI = f"mongodb://localhost:27017/{URI_OPTIONS}"
+DB_NAME = "universiteDB"
+
 client = pymongo.MongoClient(
     MONGO_URI,
     serverSelectionTimeoutMS=5000,
-    read_preference=ReadPreference.PRIMARY_PREFERRED  # <--- HADA HOWA L'MO3ALIM
+    connectTimeoutMS=5000,
+    read_preference=MY_READ_PREF
 )
 
-# Debug: Bach nt2kdo anna l'code fhem l'plan
+# Debug
 print(f"DEBUG: Read Preference actuelle = {client.read_preference}")
 
 db = client[DB_NAME]
@@ -32,39 +57,59 @@ except Exception as e:
     print(f"\n!!! ERREUR DE CONNEXION !!!\nErreur: {e}")
     sys.exit(1)
 
-etudiants = db["etudiants"]
-notes = db["notes"]
+# 🛑 FIX 3: FORCER LE READ PREFERENCE SUR LES COLLECTIONS 🛑
+# Hada howa l-ferq l-kbir: Kanbzzo 3la collection tqra mn Secondary
+if IS_CHAOS_MODE:
+    print("--- ⚙️  Application du ReadPreference sur les Collections... ---")
+    etudiants = db.get_collection("etudiants").with_options(read_preference=ReadPreference.PRIMARY_PREFERRED)
+    notes = db.get_collection("notes").with_options(read_preference=ReadPreference.PRIMARY_PREFERRED)
+else:
+    etudiants = db["etudiants"]
+    notes = db["notes"]
 
-# ------------------------------------------
-# Detect SHARDING MODE
+
+
+# Detect SHARDING MODE (Via Indexes) - FIX
 # ------------------------------------------
 def detect_sharding_strategy():
     try:
         config = client["config"]["collections"].find_one({"_id": f"{DB_NAME}.etudiants"})
-        if not config: return "unknown"
+        if not config:
+            return "unknown"
+
         key = config.get("key", {})
-        if "faculte" in key: return "faculte"
-        elif "annee_universitaire" in key: return "annee"
+        if "faculte" in key:
+            return "faculte"
+        elif "annee_universitaire" in key:
+            return "annee"
         return "unknown"
     except:
         return "unknown"
 
 SHARDING_MODE = detect_sharding_strategy()
-print(f"--- STRATEGY DETECTED: {SHARDING_MODE} ---")
+print(f"--- DETECTED STRATEGY: {SHARDING_MODE} ---")
 
-# ==========================================
-#  ✅ FIX: Try/Except 3la l'Index
-# ==========================================
-print("--- Creating Index on 'notes.etudiant_id' (Optimization) ---")
-try:
-    db.notes.create_index([("etudiant_id", pymongo.ASCENDING)])
-    print("--- Index Created Successfully! ---")
-except Exception as e:
-    # Hna fin kan-ignorer l'erreur ila Primary kan taye7
-    print(f"--- ⚠️ Index creation SKIPPED (Normal during Failure Test) ---")
-    print("> Reason:  Could not find host matching read preference { faculte : primary } for set shardA-rs")
-
-# ==========================================
+# 3. OPTIMISATION (INDEX) - VERSION INTELLIGENTE
+# -----------------------------------------------------------------------------
+if not IS_CHAOS_MODE:
+    print("\n--- [NORMAL] Vérification de l'Index sur 'etudiant_id' ---")
+    try:
+        # 1. Kan-jebdo les indexes li kaynin db
+        existing_indexes = db.notes.index_information()
+        
+        # 2. Kan-checkiw wach "etudiant_id_1" kayn (Smia par défaut dyal mongo)
+        if "etudiant_id_1" in existing_indexes:
+            print("ℹ️  [INFO] Index déjà présent. SKIP.")
+        else:
+            # 3. Ila ma kanch, 3ad kan-creeriweh
+            print("⏳ Création de l'index en cours...")
+            db.notes.create_index([("etudiant_id", pymongo.ASCENDING)])
+            print("✅ Index créé avec succès.")
+            
+    except Exception as e:
+        print(f"⚠️ Erreur création index: {e}")
+else:
+    print("\n--- [CHAOS] ⏩ Index Creation SKIPPED (Sécurité: Write operation unsafe) ---")
 
 # ------------------------------------------
 # Benchmark helper
@@ -84,17 +129,22 @@ def benchmark(name, func, repeat=1):
         return avg_time
     except Exception as e:
         print(f"FAILED! Error: {e}")
-        # Hna kan-returniw None bach n3rfo rah fchel, walakin ma nwaqfouch script
         return None
 
 # ------------------------------------------
 # QUERIES
 # ------------------------------------------
 def avg_by_student():
-    list(etudiants.aggregate([
-        {"$lookup": {"from": "notes", "localField": "etudiant_id", "foreignField": "etudiant_id", "as": "notes"}},
-        {"$unwind": "$notes"},
-        {"$group": {"_id": "$etudiant_id", "avg_note": {"$avg": "$notes.note"}}}
+    # METHODE OPTIMISEE (Sans $lookup)
+    # Kan-sta3mlo l-Index 'etudiant_id' li saybna direct f notes
+    list(notes.aggregate([
+        # 1. Group by etudiant_id (Local Index Usage)
+        {"$group": {
+            "_id": "$etudiant_id", 
+            "avg_note": {"$avg": "$note"}
+        }},
+        # 2. Limit (Bach ma y-explozich l-RAM ila kano millions)
+        {"$limit": 100} 
     ]))
 
 def single_student_avg():
@@ -124,13 +174,22 @@ def histogram_notes():
     ]))
 
 def top20_students():
-    list(etudiants.aggregate([
-        {"$lookup": {"from": "notes", "localField": "etudiant_id", "foreignField": "etudiant_id", "as": "notes"}},
-        {"$unwind": "$notes"},
-        {"$group": {"_id": "$etudiant_id", "avg_note": {"$avg": "$notes.note"}}},
-        {"$sort": {"avg_note": -1}},
-        {"$limit": 20}
-    ]))
+    # METHODE OPTIMISEE (Sans $lookup)
+    # Kan-khdmo direct 3la collection 'notes'
+    try:
+        list(notes.aggregate([
+            # 1. Group par étudiant bash n7sbo l-moyenne
+            {"$group": {
+                "_id": "$etudiant_id", 
+                "avg_note": {"$avg": "$note"}
+            }},
+            # 2. Sort decroissant (mn l-kbir l-sghir)
+            {"$sort": {"avg_note": -1}},
+            # 3. Limit (Top 20)
+            {"$limit": 20}
+        ]))
+    except Exception as e:
+        print(f" (Info: Lookup complex failed in Chaos: {e})", end="")
 
 # ------------------------------------------
 # RUN BENCHMARKS

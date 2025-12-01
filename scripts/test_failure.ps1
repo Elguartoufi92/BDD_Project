@@ -33,7 +33,7 @@ Start-Sleep -Seconds 15
 
 # --- 4. Test PENDANT la panne ---
 Write-Host "4. Test PENDANT panne..." -ForegroundColor Yellow
-python $PYTHON_SCRIPT
+python $PYTHON_SCRIPT --chaos
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ECHEC : Le cluster NE SURVIT PAS à la panne !" -ForegroundColor Red

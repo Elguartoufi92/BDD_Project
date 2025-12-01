@@ -89,8 +89,9 @@ setupAndBalance("notes");
 // 5. DEMARRAGE BALANCER
 // ---------------------------------------------------------
 print("5. Activation du Balancer (au cas où)...");
-sh.startBalancer();
+printjson(sh.startBalancer());
 
 print("\n===== Configuration ULTIME Terminée =====");
 print("Distribution actuelle :");
-db.getSiblingDB("universiteDB").etudiants.getShardDistribution();
+var universiteDB = db.getSiblingDB("universiteDB");
+printjson(universiteDB.etudiants.getShardDistribution());
