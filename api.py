@@ -43,32 +43,69 @@ def home():
     """Health Check simple"""
     return {"status": "online", "system": "API Université Distribuée"}
 
-@app.get("/read-note")
-def read_note():
+@app.get("/shards-content")
+def get_shards_content():
     """
-    Test de Lecture (Fault Tolerance).
-    Kay7awel yqra note dyal 'CNE_1'.
-    Ila Primary taye7, ghadi yqra mn Secondary bla ma y-crasher.
+    VERSION CORRIGÉE (UUID SUPPORT):
+    Kybiyen chmen Facultés kinin f Shard A o chmen Facultés f Shard B.
+    Kaysta3mel UUID bash ylqa les chunks f MongoDB 6.0+.
     """
-    if notes_col is None:
-        return {"success": False, "error": "Database not connected"}
+    if not client:
+        return {"success": False, "error": "Client not connected"}
 
     try:
-        # Requete simple d'aggrégation
-        result = list(notes_col.aggregate([
-            {"$match": {"etudiant_id": "CNE_1"}},
-            {"$group": {"_id": None, "avg": {"$avg": "$note"}}}
-        ]))
+        config_db = client["config"]
         
-        if result:
+        # 1. ETAPE CRITIQUE: Njibu UUID dyal collection
+        # Hada howa l-lien s7i7 bin Collection o Chunks f versions jdad
+        coll_meta = config_db.collections.find_one({"_id": "universiteDB.etudiants"})
+        
+        if not coll_meta:
             return {
-                "success": True, 
-                "avg": result[0]['avg'], 
-                "message": "Donnée récupérée (Source: Replica ou Primary)"
+                "success": False, 
+                "error": "Collection 'etudiants' non trouvée ou non shardée (Vérifiez setup_sharding)"
             }
-        else:
-            return {"success": False, "message": "Aucune donnée trouvée pour CNE_1"}
             
+        coll_uuid = coll_meta["uuid"] # <--- HADA HOWA L-MFT7
+
+        # 2. Aggregation باستعمال UUID
+        pipeline = [
+            {"$match": {"uuid": coll_uuid}}, # <--- FIX: Kenna kandiro "ns", rddinaha "uuid"
+            {"$group": {
+                "_id": "$shard",
+                "facultes": {
+                    "$push": {
+                        "min": "$min.faculte",
+                        "max": "$max.faculte"
+                    }
+                }
+            }}
+        ]
+        
+        result = list(config_db.chunks.aggregate(pipeline))
+        
+        # 3. Formatting
+        output = {}
+        for item in result:
+            shard_name = item["_id"]
+            ranges = []
+            for r in item["facultes"]:
+                min_val = r.get("min", "MinKey")
+                max_val = r.get("max", "MaxKey")
+                
+                # Nettoyage
+                if isinstance(min_val, dict): min_val = "∞ (Début)"
+                if isinstance(max_val, dict): max_val = "∞ (Fin)"
+                
+                ranges.append(f"{min_val} ➝ {max_val}")
+            
+            output[shard_name] = ranges
+
+        return {
+            "success": True,
+            "data": output
+        }
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 

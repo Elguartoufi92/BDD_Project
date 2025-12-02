@@ -33,51 +33,53 @@ tab1, tab2 = st.tabs(["🔥 Chaos Test (Lecture)", "📊 État du Cluster (Data)
 # TAB 1: TEST DE LECTURE (CHAOS)
 # ==============================================================================
 # ==============================================================================
-# TAB 1: TEST DE LECTURE (CHAOS) - VERSION CORRIGÉE
+# TAB 1: LOCALISATION DES DONNÉES (QUI EST OÙ ?)
 # ==============================================================================
 with tab1:
-    st.subheader("⚡ Test de Lecture (Fault Tolerance)")
-    st.info("ℹ️ Ce test vérifie si l'API peut lire les données même si le Primary est en panne.")
+    st.subheader("🗺️ Cartographie des Données")
+    st.info("ℹ️ Ce test interroge le Routeur pour savoir quelles Facultés sont stockées sur quel Shard.")
 
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([1, 3])
     
     with col1:
-        if st.button("▶️ DEMANDER LA NOTE", type="primary", use_container_width=True):
+        if st.button("📍 VOIR LA RÉPARTITION", type="primary", use_container_width=True):
             status = st.empty()
-            status.info("⏳ Requête envoyée...")
             
-            start = time.time()
             try:
-                # Appel API
-                response = requests.get(f"{api_url}/read-note", timeout=5) # Zedt timeout 5s
-                dur = time.time() - start
+                # Appel au nouvel endpoint
+                response = requests.get(f"{api_url}/shards-content")
+                data = response.json()
                 
-                # --- HNA FIN KAN-FIXIW L-ERROR ---
-                if response.status_code == 200:
-                    try:
-                        data = response.json() # 3ad kan-7awlo nqraw JSON
-                        if data.get("success"):
-                            status.success(f"✅ SUCCÈS ({dur:.4f}s)")
-                            st.metric("Moyenne reçue", f"{data['avg']:.2f} / 20")
-                            if data.get("source"):
-                                st.caption(f"Source: {data['source']}")
-                        else:
-                            status.error(f"❌ ÉCHEC LOGIQUE: {data.get('error')}")
-                    except ValueError:
-                        # Ila rje3 HTML wla Text (Machi JSON)
-                        status.error(f"❌ ERREUR FORMAT: L'API n'a pas renvoyé de JSON. (Status: {response.status_code})")
-                        with st.expander("Voir la réponse brute"):
-                            st.text(response.text)
-                else:
-                    # Ila l-API rje3 500 Internal Server Error
-                    status.error(f"❌ ERREUR SERVEUR ({response.status_code})")
-                    with st.expander("Détails"):
-                        st.text(response.text)
+                if data.get("success"):
+                    status.success("Données récupérées !")
+                    content = data.get("data", {})
                     
-            except requests.exceptions.ConnectionError:
-                status.error("❌ Impossible de contacter l'API (Connection Refused)")
+                    # Affichage Joli (Cards)
+                    c_a, c_b = st.columns(2)
+                    
+                    with c_a:
+                        st.markdown("### 🟦 Shard A (Primary)")
+                        ranges_a = content.get("shardA-rs", [])
+                        if ranges_a:
+                            for r in ranges_a:
+                                st.info(f"🏫 {r}")
+                        else:
+                            st.caption("Aucune donnée assignée.")
+
+                    with c_b:
+                        st.markdown("### 🟧 Shard B")
+                        ranges_b = content.get("shardB-rs", [])
+                        if ranges_b:
+                            for r in ranges_b:
+                                st.warning(f"🏫 {r}")
+                        else:
+                            st.caption("Aucune donnée assignée.")
+                            
+                else:
+                    status.error(f"❌ Erreur: {data.get('error')}")
+                    
             except Exception as e:
-                status.error(f"❌ Erreur Inattendue: {e}")
+                status.error(f"❌ Impossible de joindre l'API: {e}")
 
 # ==============================================================================
 # TAB 2: DATA & SHARDING INTELLIGENCE (STATS)
