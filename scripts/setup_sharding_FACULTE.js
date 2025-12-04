@@ -1,51 +1,102 @@
 // =================================================================
-// SCRIPT DE CONFIGURATION MONGODB
+// SCRIPT DE CONFIGURATION MONGODB - VERSION CORRIGÉE (V2)
 // SCENARIO A: Sharding par "faculte"
-// Rôle: Abdelkabir (Role 3)
+// Compatible: MongoDB 6.0, 7.0, 8.0+
 // =================================================================
 
-print("===== Début Configuration Sharding (SCENARIO A: FACULTE) =====");
+print("\n===== Début Configuration Sharding (SCENARIO A: FACULTE) =====");
 
-// Mol-a7aDa: L-commandes dyal rs.initiate() ma kayninch hna.
-// Kaynin f script l-kbir (run_project.sh) 7it kayt-daro ghir merra wa7da.
+// ---------------------------------------------------------
+// 1. CONFIGURATION SYSTEME (Chunk Size)
+// ---------------------------------------------------------
+print("1. Configuration du Chunk Size (1MB)...");
+try {
+    var configDB = db.getSiblingDB("config");
+    // FIX: Bdellna .save() (Qdima) b .updateOne() (Jdida)
+    configDB.settings.updateOne(
+        { _id: "chunksize" },
+        { $set: { value: 1 } },
+        { upsert: true }
+    );
+    print("   ✅ Chunk Size réglé sur 1 MB.");
+} catch (e) {
+    print("   ⚠️ Erreur Chunk Size: " + e);
+}
 
-print("1. Ajout Shard A (shardA-rs) au Cluster...");
-sh.addShard("shardA-rs/shA1:27017,shA2:27017");
+// ---------------------------------------------------------
+// 2. AJOUT DES SHARDS
+// ---------------------------------------------------------
+print("2. Ajout des Shards...");
+try {
+    sh.addShard("shardA-rs/shA1:27017,shA2:27017");
+    print("   ✅ Shard A ajouté.");
+} catch(e) { print("   ℹ️  Shard A existe déjà."); }
 
-print("2. Ajout Shard B (shardB-rs) au Cluster...");
-sh.addShard("shardB-rs/shB1:27017,shB2:27017");
+try {
+    sh.addShard("shardB-rs/shB1:27017,shB2:27017");
+    print("   ✅ Shard B ajouté.");
+} catch(e) { print("   ℹ️  Shard B existe déjà."); }
 
-print("... Shards ajoutés avec succès.");
-
-print("3. Activation Sharding sur la DB 'universiteDB'...");
+// ---------------------------------------------------------
+// 3. ACTIVATION DB
+// ---------------------------------------------------------
+print("3. Activation Sharding sur 'universiteDB'...");
 try {
     sh.enableSharding("universiteDB");
-    print("   ... 'universiteDB' activée pour le sharding.");
-} catch (e) {
-    print("   ... DB 'universiteDB' déjà activée.");
+    print("   ✅ DB activée avec succès.");
+} catch (e) { 
+    print("   ℹ️  DB déjà activée."); 
 }
 
-print("4. Configuration Sharding (par FACULTE) sur les collections...");
+// ---------------------------------------------------------
+// 4. FONCTION DE CONFIGURATION
+// ---------------------------------------------------------
+function setupAndBalance(collName) {
+    var ns = "universiteDB." + collName;
+    print("\n>>> Traitement de la collection : " + ns);
 
-// Shard 'etudiants'
-try {
-    sh.shardCollection("universiteDB.etudiants", { faculte: 1 });
-    print("   ... Collection 'etudiants' shardée par 'faculte'.");
-} catch (e) {
-    print("   ... ERREUR ou Collection 'etudiants' déjà shardée.");
-    printjson(e);
+    // A. SHARDING
+    try {
+        sh.shardCollection(ns, { faculte: 1 });
+        print("    ✅ [SHARD] Collection shardée.");
+    } catch (e) {
+        print("    ℹ️  [SHARD] Déjà shardée.");
+    }
+
+    // B. SPLITTING (Découpage)
+    // On coupe le gateau à "Faculte C"
+    print("    ... Tentative de Split à 'Faculte C'...");
+    try {
+        var res = sh.splitAt(ns, { faculte: "Faculte C" });
+        if (res.ok) {
+            print("    ✅ [SPLIT] Split réussi.");
+        } else {
+            print("    ℹ️  [SPLIT] Pas nécessaire ou erreur mineure.");
+        }
+    } catch (e) {
+        print("    ℹ️  [SPLIT] Déjà splité ou erreur: " + e.message);
+    }
+
+    // C. MOVING (Déplacement)
+    // On déplace le morceau "Faculte C et plus" vers Shard B
+    print("    ... Tentative de déplacement vers Shard B...");
+    try {
+        var res = sh.moveChunk(ns, { faculte: "Faculte C" }, "shardB-rs");
+        if (res.ok) {
+            print("    ✅ [MOVE] Déplacement réussi.");
+        } else {
+            print("    ℹ️  [MOVE] Déjà sur le bon shard.");
+        }
+    } catch (e) {
+        // Ignorer l'erreur si c'est déjà fait
+        print("    ℹ️  [MOVE] Chunk déjà déplacé.");
+    }
 }
 
-// Shard 'notes'
-try {
-    sh.shardCollection("universiteDB.notes", { faculte: 1 });
-    print("   ... Collection 'notes' shardée par 'faculte'.");
-} catch (e) {
-    print("   ... ERREUR ou Collection 'notes' déjà shardée.");
-    printjson(e);
-}
+// ---------------------------------------------------------
+// 5. APPLICATION
+// ---------------------------------------------------------
+setupAndBalance("etudiants");
+setupAndBalance("notes");
 
-
-print("===== Configuration Terminée (SCENARIO A) =====");
-print("\nVérification du statut du cluster:");
-sh.status();
+print("\n===== Configuration Terminée avec Succès =====");

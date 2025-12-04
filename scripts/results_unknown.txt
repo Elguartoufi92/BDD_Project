@@ -1,0 +1,10 @@
+===========(sharding_by_unknown) ===========
+
+AVG_BY_STUDENT: 63.2187 sec
+NOTES_SINGLE: 0.0032 sec
+AVG_BY_YEAR: 1.3101 sec
+AVG_BY_FAC: 1.6623 sec
+HISTOGRAM: 2.3246 sec
+MOST_NOTES: 64.6342 sec
+
+================================
