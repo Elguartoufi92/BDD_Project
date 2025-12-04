@@ -129,33 +129,27 @@ def benchmark(name, func, repeat=1):
 # 5. REQUETES (QUERIES) - OPTIMISÉES
 # =============================================================================
 
+def avg_by_student():
+    list(etudiants.aggregate([
+        {"$lookup": {"from": "notes", "localField": "etudiant_id", "foreignField": "etudiant_id", "as": "notes"}},
+        {"$unwind": "$notes"},
+        {"$group": {"_id": "$etudiant_id", "avg_note": {"$avg": "$notes.note"}}}
+    ]))
+
 def single_student_avg():
-    # Simple read
     list(notes.aggregate([
         {"$match": {"etudiant_id": "CNE_1"}},
         {"$group": {"_id": None, "avg": {"$avg": "$note"}}}
     ]))
 
-def avg_by_faculte():
-    # Sharding Key
-    list(notes.aggregate([
-        {"$group": {"_id": "$faculte", "avg_note": {"$avg": "$note"}}}
-    ]))
-
 def avg_by_year():
-    # Scatter-Gather (Global)
     list(notes.aggregate([
         {"$group": {"_id": "$annee_universitaire", "avg_note": {"$avg": "$note"}}}
     ]))
 
-def avg_by_student():
-    # ✅ OPTIMISÉE: Plus de $lookup, direct sur notes
+def avg_by_faculte():
     list(notes.aggregate([
-        {"$group": {
-            "_id": "$etudiant_id", 
-            "avg_note": {"$avg": "$note"}
-        }},
-        {"$limit": 100} 
+        {"$group": {"_id": "$faculte", "avg_note": {"$avg": "$note"}}}
     ]))
 
 def histogram_notes():
@@ -169,18 +163,13 @@ def histogram_notes():
     ]))
 
 def top20_students():
-    # ✅ OPTIMISÉE: Plus de $lookup, direct sur notes
-    try:
-        list(notes.aggregate([
-            {"$group": {
-                "_id": "$etudiant_id", 
-                "avg_note": {"$avg": "$note"}
-            }},
-            {"$sort": {"avg_note": -1}},
-            {"$limit": 20}
-        ]))
-    except Exception as e:
-        print(f" (Error: {e})", end="")
+    list(etudiants.aggregate([
+        {"$lookup": {"from": "notes", "localField": "etudiant_id", "foreignField": "etudiant_id", "as": "notes"}},
+        {"$unwind": "$notes"},
+        {"$group": {"_id": "$etudiant_id", "avg_note": {"$avg": "$notes.note"}}},
+        {"$sort": {"avg_note": -1}},
+        {"$limit": 20}
+    ]))
 
 # ------------------------------------------
 # RUN BENCHMARKS

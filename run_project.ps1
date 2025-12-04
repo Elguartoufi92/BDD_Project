@@ -67,7 +67,6 @@ docker exec mongos mongosh --file /scripts/setup_sharding_FACULTE.js
 Write-Host "Waiting 20s for cluster to stabilize..."
 Start-Sleep -Seconds 20
 docker exec mongos mongosh --file /scripts/setup_sharding_FACULTE.js
-
 # -------------------------------------------------
 # Step 6 :  Data generation
 # -------------------------------------------------
