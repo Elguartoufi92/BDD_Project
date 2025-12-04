@@ -9,7 +9,7 @@ app = FastAPI()
 # ==============================================================================
 # Hna kan-sta3mlo Port 27018 (kima bddelti f docker-compose)
 # options: serverSelectionTimeoutMS=2000 (Bach ma y-bloquich ila l-primary ta7)
-MONGO_URI = "mongodb://localhost:27018/?readPreference=primaryPreferred&serverSelectionTimeoutMS=2000"
+MONGO_URI = "mongodb://localhost:27018,localhost:27019/?readPreference=primaryPreferred&serverSelectionTimeoutMS=2000"
 DB_NAME = "universiteDB"
 
 # Variable Globale l-Client

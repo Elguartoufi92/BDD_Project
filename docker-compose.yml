@@ -37,6 +37,23 @@ services:
       timeout: 5s
       retries: 5
 
+  cfg3:
+    image: mongo:latest
+    container_name: cfg3
+    command: mongod --configsvr --replSet cfg-rs --port 27017 --bind_ip_all
+    ports:
+      - "30007:27017"
+    volumes:
+      - ./scripts:/scripts
+      - cfg3-data:/data/db
+    networks:
+      - cluster-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # --- Shard A (Replica Set: shardA-rs) ---
   # Stocke une partie des données (ex: Faculté A & B).
   shA1:
@@ -114,13 +131,46 @@ services:
   mongos:
     image: mongo:latest
     container_name: mongos
-    command: mongos --configdb cfg-rs/cfg1:27017,cfg2:27017 --bind_ip_all --port 27017
+    command: mongos --configdb cfg-rs/cfg1:27017,cfg2:27017,cfg3:27017 --bind_ip_all --port 27017
     ports:
       - "27018:27017"
     depends_on:
       cfg1:
         condition: service_healthy
       cfg2:
+        condition: service_healthy
+      cfg3:
+        condition: service_healthy
+      shA1:
+        condition: service_healthy
+      shA2:
+        condition: service_healthy
+      shB1:
+        condition: service_healthy
+      shB2:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - cluster-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongos2:
+    image: mongo:latest
+    container_name: mongos2
+    command: mongos --configdb cfg-rs/cfg1:27017,cfg2:27017,cfg3:27017 --bind_ip_all --port 27017
+    ports:
+      - "27019:27017"
+    depends_on:
+      cfg1:
+        condition: service_healthy
+      cfg2:
+        condition: service_healthy
+      cfg3:
         condition: service_healthy
       shA1:
         condition: service_healthy
@@ -143,6 +193,7 @@ services:
 volumes:
   cfg1-data:
   cfg2-data:
+  cfg3-data:
   shA1-data:
   shA2-data:
   shB1-data:
